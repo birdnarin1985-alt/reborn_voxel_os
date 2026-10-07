@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>Chicken 3D Emotional DNA Simulator</title>
+    <style>
+        body { margin: 0; background: #030305; color: #00ffcc; font-family: monospace; overflow: hidden; }
+        #canvas { width: 100vw; height: 100vh; display: block; }
+        #hud { position: absolute; top: 10px; left: 10px; background: rgba(2,2,4,0.9); padding: 20px; border: 1px solid #00ffcc; border-radius: 6px; pointer-events: none; box-shadow: 0 0 15px rgba(0,255,204,0.25); }
+        .heart { color: #ff3366; animation: beat 0.4s infinite alternate; display: inline-block; }
+        @keyframes beat { to { transform: scale(1.2); } }
+        .shy-alert { color: #ff6699; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="hud">
+        <h2>🧬 Chicken Emotional 3D AI</h2>
+        <p>ชีพจร (GPU Pulse): <span class="heart">❤️</span> <span id="fps-text">60 FPS ลื่นปื๊ด</span></p>
+        <p>ระดับเจตสิกเขินอาย: <span id="shy-status" class="shy-alert">0.00 (ปกติ)</span></p>
+        <p>ปฏิกิริยาผัสสะ: <span id="touch-status" style="color:#fff;">รออายตนะกระทบ...</span></p>
+        <small>👉 ลองเอานิ้วลูบหรือคลิกหน้าจอรัวๆ เพื่อกระตุ้นผัสสะให้ไก่เขินอาย</small>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // -------------------------------------------------------------
+        // COLUMNAR EMOTIONAL 3D VECTOR DATABASE 
+        // -------------------------------------------------------------
+        const CHICKEN_EMOTION_VRAM = {
+            id: [],
+            vecX: [], vecY: [], vecZ: [],
+            baseSize: [],
+            baseHue: [],     // สีดั้งเดิมตามรหัส DNA
+            currentHue: [],  // สีปัจจุบันที่เปลี่ยนไปตามแรงปฏิกิริยาเจตสิก
+            parentIdx: [],
+            pulsePhase: []
+        };
+
+        // สถานะระบบอารมณ์ประมวลผลส่วนกลาง (Global Emotional State)
+        let globalShynessLevel = 0.0; // 0.0 (ปกติ) ถึง 1.0 (เขินสุดขีด)
+        let isTouching = 0;           // Bitmask ผัสสะ (1 = กระทบอยู่, 0 = ปล่อย)
+
+        function initShyChicken() {
+            // สร้างโครงสร้างข้อต่อไก่ 3 มิติจากแก่นกลาง
+            addPartNode(0, -90, 0, 40, -1, 25);   // โนด 0: หัว/ลำตัวหลัก (ส้มทอง)
+            addPartNode(0, -140, 10, 15, 0, 0);   // โนด 1: หงอนไก่ด้านบน (แดง)
+            addPartNode(-25, -60, 0, 15, 0, 25);  // โนด 2: ปีกซ้าย
+            addPartNode(25, -60, 0, 15, 0, 25);   // โนด 3: ปีกขวา
+            addPartNode(-15, -20, 0, 8, 0, 45);   // โนด 4: ขาซ้าย (เหลือง)
+            addPartNode(15, -20, 0, 8, 0, 45);    // โนด 5: ขาขวา (เหลือง)
+        }
+
+        function addPartNode(x, y, z, size, pIdx, hue) {
+            const idx = CHICKEN_EMOTION_VRAM.id.length;
+            CHICKEN_EMOTION_VRAM.id.length = idx + 1;
+            CHICKEN_EMOTION_VRAM.id[idx] = idx;
+            CHICKEN_EMOTION_VRAM.vecX[idx] = x;
+            CHICKEN_EMOTION_VRAM.vecY[idx] = y;
+            CHICKEN_EMOTION_VRAM.vecZ[idx] = z;
+            CHICKEN_EMOTION_VRAM.baseSize[idx] = size;
+            CHICKEN_EMOTION_VRAM.baseHue[idx] = hue;
+            CHICKEN_EMOTION_VRAM.currentHue[idx] = hue;
+            CHICKEN_EMOTION_VRAM.parentIdx[idx] = pIdx;
+            CHICKEN_EMOTION_VRAM.pulsePhase[idx] = Math.random() * Math.PI * 2;
+        }
+
+        initShyChicken();
+
+        // -------------------------------------------------------------
+        // GPU PROCESSOR KERNEL LOOP (60 FPS)
+        // -------------------------------------------------------------
+        let baseAngleY = 0;
+        let pulseTime = 0;
+
+        function emotionalRenderPipeline() {
+            pulseTime += 0.07;
+            
+            // ลอจิกการสลายตัวของอารมณ์ (ความเขินอายเกิดขึ้นและค่อยๆ ดับไปตามอนิจจังสัจจะ)
+            if (isTouching === 0 && globalShynessLevel > 0) {
+                globalShynessLevel -= 0.015; // ค่อยๆ หายเขินอายเมื่อไม่มีผัสสะมากระทบซ้ำ
+                if (globalShynessLevel < 0) globalShynessLevel = 0;
+            }
+            
+            document.getElementById('shy-status').innerText = `${globalShynessLevel.toFixed(2)} ${globalShynessLevel > 0.5 ? '(เขินหน้าแดงแล้ว!)' : '(ปกติ)'}`;
+
+            ctx.fillStyle = 'rgba(3, 3, 5, 0.25)'; 
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const total = CHICKEN_EMOTION_VRAM.id.length;
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            const fov = 400;
+
+            const sX = new Array(total);
+            const sY = new Array(total);
+            const sSize = new Array(total);
+
+            // คำนวณมุมหมุนที่เปลี่ยนไปตามระนาบความเขิน (บิดตัวหนีหลบมุมกล้องเมื่อเขินอาย)
+            const shyRotationOffset = globalShynessLevel * Math.PI * 0.25; // บิดหลบสูงสุดประมาณ 45 องศา
+            const finalAngleY = baseAngleY + shyRotationOffset;
+            baseAngleY += 0.008; // การเอื่อยหมุนรอบตัวเองตามปกติ
+
+            // 1. ขั้นตอน Vectorized Calculation
+            for (let i = 0; i < total; i++) {
+                const x = CHICKEN_EMOTION_VRAM.vecX[i];
+                const y = CHICKEN_EMOTION_VRAM.vecY[i];
+                const z = CHICKEN_EMOTION_VRAM.vecZ[i];
+
+                // 3D Matrix Rotation
+                const cos = Math.cos(finalAngleY);
+                const sin = Math.sin(finalAngleY);
+                const rx = x * cos - z * sin;
+                const rz = x * sin + z * cos;
+                
+                // รูปชีวิตินทรีย์ขยับหายใจหายคอตุ๊บๆ 
+                const breathe = 1.0 + Math.sin(pulseTime + CHICKEN_EMOTION_VRAM.pulsePhase[i]) * 0.06;
+                const ry = y * breathe;
+
+                const cameraZ = rz + 250;
+                const scale = fov / cameraZ;
+
+                sX[i] = cx + rx * scale;
+                sY[i] = cy + ry * scale;
+                sSize[i] = CHICKEN_EMOTION_VRAM.baseSize[i] * scale * 0.45 * breathe;
+
+                // ลอจิกการเปลี่ยนสีเนื้อผิวตามระดับความเขินอาย (Blushing Effect)
+                // ค่อยๆ เกลี่ยค่า Hue เข้าหาแกนสีชมพูแดง (Hue 340) ตามระดับของ globalShynessLevel
+                const origHue = CHICKEN_EMOTION_VRAM.baseHue[i];
+                if (origHue !== 45) { // ยกเว้นส่วนขาและปากให้คงสีเหลืองไว้ตามรหัส DNA
+                    CHICKEN_EMOTION_VRAM.currentHue[i] = origHue + (340 - origHue) * globalShynessLevel;
+                }
+            }
+
+            // 2. ขั้นตอนลงสีเรนเดอร์กราฟพอยเตอร์
+            for (let i = 0; i < total; i++) {
+                const pIdx = CHICKEN_EMOTION_VRAM.parentIdx[i];
+                if (pIdx !== -1) {
+                    ctx.beginPath();
+                    ctx.moveTo(sX[i], sY[i]);
+                    ctx.lineTo(sX[pIdx], sY[pIdx]);
+                    ctx.strokeStyle = `hsla(${CHICKEN_EMOTION_VRAM.currentHue[i]}, 90%, 50%, 0.15)`;
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+
+                ctx.beginPath();
+                ctx.arc(sX[i], sY[i], Math.max(1, sSize[i]), 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${CHICKEN_EMOTION_VRAM.currentHue[i]}, 100%, 55%, 0.75)`;
+                ctx.shadowBlur = sSize[i] * 0.8;
+                ctx.shadowColor = `hsla(${CHICKEN_EMOTION_VRAM.currentHue[i]}, 100%, 55%, 0.4)`;
+                ctx.fill();
+            }
+
+            requestAnimationFrame(emotionalRenderPipeline);
+        }
+
+        // EVENT-DRIVEN: ป้อนผัสสะอายตนะผ่านหน้าจอสัมผัสจริง
+        function triggerPhassaEvent() {
+            isTouching = 1;
+            document.getElementById('touch-status').innerText = "เกิดผัสสะลูบจอ! เจตสิกแปรปรวน";
+            
+            // ขยับระดับความเขินวาบขยายตัวขึ้นพุ่บๆ
+            if (globalShynessLevel < 1.0) {
+                globalShynessLevel += 0.18;
+                if (globalShynessLevel > 1.0) globalShynessLevel = 1.0;
+            }
+
+            setTimeout(() => {
+                isTouching = 0;
+                document.getElementById('touch-status').innerText = "ผัสสะดับลง... กำหนดรู้สภาวะ";
+            }, 300);
+        }
+
+        window.addEventListener('mousedown', triggerPhassaEvent);
+        window.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // ป้องกันอาการหน่วงบน iPhone
+            triggerPhassaEvent();
+        });
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        emotionalRenderPipeline();
+    </script>
+</body>
+</html>
